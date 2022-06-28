@@ -1,0 +1,10 @@
+flask
+fiona
+shapely
+requests
+flask_cors
+numpy
+rtree
+pymbtiles
+flask-swagger-ui
+gdal

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <!--
+  Copyright (c) 2017-2018 Jean-Marc VIGLINO,
+  released under CeCILL-B (french BSD like) licence: http://www.cecill.info/
+-->
+    <title>Recherche quartiers prioritaires de la politique de la ville (QPV)</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <meta name="description" content="Control to add a grid reference to a map." />
+    <meta name="keywords" content="ol3, control, search, BAN, french, places, autocomplete" />
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+    <!-- Openlayers -->
+    <link rel="stylesheet" href="https://openlayers.org/en/latest/css/ol.css" />
+    <script type="text/javascript" src="https://openlayers.org/en/latest/build/ol.js"></script>
+    <script
+        src="https://cdn.polyfill.io/v2/polyfill.min.js?features=requestAnimationFrame,Element.prototype.classList,URL,Object.assign"></script>
+
+    <!-- ol-ext -->
+    <link rel="stylesheet" href="https://viglino.github.io/ol-ext/dist/ol-ext.css" />
+    <script type="text/javascript" src="https://viglino.github.io/ol-ext/dist/ol-ext.js"></script>
+    <!-- Pointer events polyfill for old browsers, see https://caniuse.com/#feat=pointer -->
+    <script src="https://unpkg.com/elm-pep"></script>
+
+    <style>
+        html,
+        body {
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        #map {
+            /* configure the size of the map */
+            width: 100%;
+            height: 100%;
+        }
+
+        .ol-search ul {
+            color: #333;
+            font-size: 0.85em;
+            max-width: 21em;
+        }
+
+        .ol-search ul i {
+            display: block;
+            color: #333;
+            font-size: 0.85em;
+        }
+
+        .ol-search ul li.copy {
+            display: none;
+        }
+
+        .info a img {
+            display: inline-block;
+            height: 100px;
+            margin: .5em;
+        }
+
+        #qpv-description {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            z-index: 1;
+            background-color: white;
+            padding: 10px;
+        }
+
+        .display-none {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- DIV pour la carte -->
+    <div id="map">
+        <div id="qpv-description" class="display-none"></div>
+    </div>
+
+    <script type="text/javascript">
+        const qpv_description = document.getElementById('qpv-description')
+        // Layers
+        var vector = new ol.layer.Vector({ displayInLayerSwitcher: false, source: new ol.source.Vector({ useSpatialIndex: false }) })
+        var vectorUrl = '/api/v1/qpv/tiles/{z}/{x}/{y}.pbf'
+        // http://localhost:5000/api/v1/qpv/tiles/16/32477/22990.pbf
+        //var vectorUrl = 'https://basemaps.arcgis.com/v1/arcgis/rest/services/World_Basemap/VectorTileServer/tile/{z}/{y}/{x}.pbf'
+        var vectorTile = new ol.layer.VectorTile({
+            title: "QPV",
+            source: new ol.source.VectorTile({
+                format: new ol.format.MVT(),
+                url: vectorUrl,
+                maxZoom: 14
+            })
+        });
+
+        vector.getSource().on('addfeature', function (evt) {
+            console.log(evt)
+            const [lon, lat] = ol.proj.toLonLat(evt.feature.getGeometry().getCoordinates())
+            fetch(`/api/v1/search_qpv?longitude=${lon}&latitude=${lat}`)
+                .then(r => r.json())
+                .then(json => {
+                    if (json.features.length > 0) {
+                        //console.log(json)
+                        const properties = json.features[0].properties
+                        const departement = properties.CODE_QP.slice(2, 3) == '0' ? properties.CODE_QP.slice(3, 5) : properties.CODE_QP.slice(2, 5)
+                        qpv_description.innerHTML = `QPV "${properties.NOM_QP}" (${properties.CODE_QP}) située sur la commune de ${properties.COMMUNE_QP} (${departement})`
+                    } else {
+                        qpv_description.innerHTML = 'Pas dans une QPV'
+                    }
+                    if (qpv_description.classList.contains('display-none')) {
+                        if (qpv_description.innerHTML.length > 0) {
+                            qpv_description.classList.remove('display-none')
+                        } else {
+                            qpv_description.classList.add('display-none')
+                        }
+                    }
+                })
+
+            if (vector.getSource().getFeaturesCollection().getLength() > 1) {
+                vector.getSource().getFeaturesCollection().removeAt(0);
+            }
+        })
+        // A group layer for base layers
+        var baseLayers = new ol.layer.Group({
+            title: 'Fonds de plan',
+            openInLayerSwitcher: true,
+            layers: [
+                new ol.layer.Tile({
+                    title: "OSM",
+                    baseLayer: true,
+                    source: new ol.source.OSM({
+                        attributions: [
+                            'Données <a href="http://www.openstreetmap.org/copyright">© les contributeurs OpenStreetMap</a>'
+                        ]
+                    }),
+                    visible: false
+                }),
+                new ol.layer.Geoportail({
+                    title: 'PLAN IGN V2',
+                    baseLayer: true,
+                    layer: 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2',
+                })
+            ]
+        });
+        var layers = [
+            baseLayers,
+            vectorTile,
+            vector
+        ];
+
+        const attribution = new ol.control.Attribution({
+            collapsible: true,
+            collapsed: false
+        });
+
+        // The map
+        var map = new ol.Map({
+            target: 'map',
+            view: new ol.View({
+                zoom: 13,
+                center: ol.proj.fromLonLat([-1.5920640975935199, 47.22440380804622])
+            }),
+            interactions: ol.interaction.defaults({ altShiftDragRotate: false, pinchRotate: false }),
+            controls: ol.control.defaults({ attribution: false }).extend([attribution]),
+            layers: layers
+        });
+        map.addControl(new ol.control.LayerSwitcher());
+
+        var mainbar = new ol.control.Bar();
+        map.addControl(mainbar);
+        mainbar.setPosition('top-left');
+        // Set the control grid reference
+        var search = new ol.control.SearchBAN({
+            reverse: true,
+            placeholder: 'Adresse',
+            typing: 150,
+            position: true	// Search, with priority to geo position
+        });
+        map.addControl(search);
+
+        // Add editing tools
+        var pedit = new ol.control.Toggle({
+            html: '<i class="fa fa-map-marker" ></i>',
+            className: "edit",
+            title: 'Point',
+            active: true,
+            interaction: new ol.interaction.Draw
+                ({
+                    type: 'Point',
+                    source: vector.getSource()
+                }),
+            onToggle: function (active) {
+                vector.getSource().clear();
+                if (qpv_description.classList.contains('display-none')) {
+                    if (active && qpv_description.innerHTML.length > 0) {
+                        qpv_description.classList.remove('display-none')
+                    }
+
+                }
+                if (!(active)) {
+                    qpv_description.innerHTML = ''
+                    qpv_description.classList.add('display-none')
+                }
+            }
+        });
+        mainbar.addControl(pedit);
+
+        mainbar.addControl(new ol.control.FullScreen());
+        // Select feature when click on the reference index
+        search.on('select', function (e) {
+            map.getView().animate({
+                center: e.coordinate,
+                zoom: Math.max(map.getView().getZoom(), 16)
+            });
+        });
+
+    </script>
+
+</body>
+
+</html>
