@@ -1,3 +1,6 @@
+# QPV API with demo
+
+
 ## Dependencies
 
 Create virtualenv
@@ -38,6 +41,8 @@ We also offer an API
 - address valid and within a QPV https://qpv.webgeodatavore.com/api/v1/search_qpv?adresse=20%20Rue%20Honor%C3%A9%20Daumier%2044100%20Nantes
 - address valid but not within a QPV https://qpv.webgeodatavore.com/api/v1/search_qpv?adresse=28%20rue%20paul%20bellamy,%2044000%20Nantes
 - invalid address, so no QPV https://qpv.webgeodatavore.com/api/v1/search_qpv?adresse=20RueHonoDaumierNantes
+
+An alternate API could be https://sig.ville.gouv.fr/wsa.php but you need to be a public actor. It could be richer but we do not really know if it goes further than our API.
 
 ## Dev infos
 
